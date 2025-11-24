@@ -6,14 +6,14 @@ APP_NAME="support-bot"
 BIN_NAME="s-b"
 DEFAULT_INSTALL_DIR="/opt/${APP_NAME}"
 INSTALL_DIR="${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}"
-REPO_URL="https://github.com/mrtesla07/support-bot.git"
+REPO_URL="https://github.com/nikitasryvkov/kemera-support.git"
 ENV_FILE=""
 EXAMPLE_FILE=""
 COMPOSE_DIR=""
 
 # Укажите URL «сырой» версии ЭТОГО скрипта для самообновления (например, GitHub Raw/Gist Raw).
 # Пример: UPDATE_URL="https://raw.githubusercontent.com/you/yourrepo/main/s-b"
-UPDATE_URL="https://raw.githubusercontent.com/mrtesla07/support-bot/main/scripts/s-b.sh"
+UPDATE_URL="https://raw.githubusercontent.com/nikitasryvkov/kemera-support/refs/heads/main/scripts/s-b.sh"
 
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 
