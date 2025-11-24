@@ -1,6 +1,8 @@
 from contextlib import suppress
 import html
+import logging
 
+from contextlib import suppress
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command, MagicData
@@ -21,6 +23,8 @@ from app.bot.utils.redis.models import UserData
 from app.bot.utils.reminders import cancel_support_reminder, schedule_support_reminder
 from app.bot.utils.security import sanitize_display_name
 from app.bot.utils.texts import TextMessage
+
+logger = logging.getLogger(__name__)
 
 router_id = Router()
 router_id.message.filter(
@@ -138,7 +142,9 @@ async def _resolve_ticket(
     notify_user: bool,
 ) -> None:
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
+    if not user_data:
+        logger.warning("Resolve: user not found by message_thread_id=%s", message.message_thread_id)
+        return None  # noqa
 
     user_data.ticket_status = "resolved"
     user_data.awaiting_reply = False
@@ -146,12 +152,31 @@ async def _resolve_ticket(
     await redis.update_user(user_data.id, user_data)
     cancel_support_reminder(apscheduler, user_data.id)
 
-    with suppress(TelegramBadRequest):
-        await message.bot.edit_forum_topic(
-            chat_id=message.chat.id,
-            message_thread_id=message.message_thread_id,
-            icon_custom_emoji_id=manager.config.bot.BOT_RESOLVED_EMOJI_ID,
+    # Проверяем наличие thread id и валидность emoji id
+    emoji_id = getattr(manager.config.bot, "BOT_RESOLVED_EMOJI_ID", None)
+    if message.message_thread_id and emoji_id:
+        try:
+            await message.bot.edit_forum_topic(
+                chat_id=message.chat.id,
+                message_thread_id=message.message_thread_id,
+                icon_custom_emoji_id=emoji_id,
+            )
+        except TelegramBadRequest as ex:
+            logger.exception(
+                "Failed to edit forum topic icon on resolve: chat_id=%s thread_id=%s emoji=%s user_id=%s error=%s",
+                message.chat.id, message.message_thread_id, emoji_id, user_data.id, ex,
+            )
+    else:
+        logger.warning(
+            "Skipping edit_forum_topic on resolve: missing thread_id or emoji_id (thread_id=%s emoji=%s)",
+            message.message_thread_id, emoji_id,
         )
+
+    # Обновляем панель (текст и клавиатуру) чтобы отобразить новый статус
+    try:
+        await _update_panel_main_message(message, manager, user_data)
+    except Exception:
+        logger.exception("Failed to update support panel after resolving ticket (user_id=%s)", user_data.id)
 
     if notify_user:
         await _send_resolution_message(manager, settings, user_data)
@@ -172,12 +197,29 @@ async def _reopen_ticket(
     await redis.update_user(user_data.id, user_data)
     cancel_support_reminder(apscheduler, user_data.id)
 
-    with suppress(TelegramBadRequest):
-        await message.bot.edit_forum_topic(
-            chat_id=message.chat.id,
-            message_thread_id=message.message_thread_id,
-            icon_custom_emoji_id=manager.config.bot.BOT_EMOJI_ID,
+    emoji_id = getattr(manager.config.bot, "BOT_EMOJI_ID", None)
+    if message.message_thread_id and emoji_id:
+        try:
+            await message.bot.edit_forum_topic(
+                chat_id=message.chat.id,
+                message_thread_id=message.message_thread_id,
+                icon_custom_emoji_id=emoji_id,
+            )
+        except TelegramBadRequest as ex:
+            logger.exception(
+                "Failed to edit forum topic icon on reopen: chat_id=%s thread_id=%s emoji=%s user_id=%s error=%s",
+                message.chat.id, message.message_thread_id, emoji_id, user_data.id, ex,
+            )
+    else:
+        logger.warning(
+            "Skipping edit_forum_topic on reopen: missing thread_id or emoji_id (thread_id=%s emoji=%s)",
+            message.message_thread_id, emoji_id,
         )
+
+    try:
+        await _update_panel_main_message(message, manager, user_data)
+    except Exception:
+        logger.exception("Failed to update support panel after reopening ticket (user_id=%s)", user_data.id)
 
     await message.reply(manager.text_message.get("ticket_reopened"))
 
