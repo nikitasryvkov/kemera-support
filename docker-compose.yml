@@ -1,0 +1,42 @@
+version: "3"
+
+services:
+
+  bot:
+    build:
+      context: .
+    container_name: support-bot
+    command: sh -c "cd /usr/src/app && python -m app"
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      - .:/usr/src/app
+    networks:
+      - network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:alpine
+    container_name: support-redis
+    restart: always
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - >
+        if [ -n "$${REDIS_PASSWORD}" ]; then
+          exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}";
+        else
+          exec redis-server --appendonly yes;
+        fi
+    volumes:
+      - ./redis/data/:/data
+    networks:
+      - network
+
+
+networks:
+  network:
